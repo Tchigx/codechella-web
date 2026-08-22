@@ -8,6 +8,8 @@ const HAZARDS = [
   { id: "boulder", label: "Boulder", color: "#a5473c" },
   { id: "misc",   label: "Misc",   color: "#2ce253" },
   { id: "shards", label: "Shards", color: "#5b8dd6" },
+  { id: "zombies", label: "zombies", color: "#123107" },
+
 ];
 
 export default function GodPanel() {
