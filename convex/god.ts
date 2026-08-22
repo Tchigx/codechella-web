@@ -9,10 +9,7 @@ export const think = action({
     if (!enabled) return;
 
     const players = await ctx.runQuery(api.game.players);
-    if (players.length === 0) {
-      await ctx.scheduler.runAfter(6000, api.god.think, { enabled });
-      return;
-    }
+    if (players.length === 0) return; // Removed the runAfter loop here
 
     const cells = players.map((p) => ({
       cx: Math.floor((p.x + 64) / 16),
@@ -29,8 +26,7 @@ export const think = action({
       body: JSON.stringify({
         model: "deepseek-ai/DeepSeek-V3-0324",
         max_tokens: 200,
-        // CHANGED: Lowered from 0.9 to 0.4 to make the AI strategic instead of random
-        temperature: 0.4, 
+        temperature: 0.4,
         messages: [
           {
             role: "system",
@@ -48,9 +44,7 @@ export const think = action({
     if (!res.ok) {
       const errorText = await res.text();
       console.error("GMI Cloud API Error:", res.status, errorText);
-      // CHANGED: Synced this timer to 6000 as well
-      await ctx.scheduler.runAfter(6000, api.god.think, { enabled }); 
-      return;
+      return; // Removed the runAfter loop here
     }
 
     try {
@@ -66,7 +60,7 @@ export const think = action({
     } catch (e) {
       console.error("god parse failed", e);
     }
-
-    await ctx.scheduler.runAfter(6000, api.god.think, { enabled });
+    
+    // Removed the final runAfter loop here!
   },
 });
