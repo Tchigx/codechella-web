@@ -28,16 +28,15 @@ export default function GodPanel() {
 
   const active = HAZARDS.find((h) => h.id === kind)!;
 
-  // --- NEW: A reusable function to draw a ring, so both YOU and the AI can use it! ---
   function animateRing(cx: number, cz: number, hazardKind: string) {
     const hazard = HAZARDS.find((h) => h.id === hazardKind) || HAZARDS[0];
-    setCount((c) => c + 1); // Updates the cast count!
+    setCount((c) => c + 1); 
     const id = ringId.current++;
     setRings((r) => [...r, { id, cx, cz, hue: hazard.hue }]);
+    // Removes the ring (and the block highlight) after exactly 800ms
     setTimeout(() => setRings((r) => r.filter((x) => x.id !== id)), 800);
   }
 
-  // The AI Loop now waits for a response and draws a ring!
   useEffect(() => {
     if (!ai) return;
 
@@ -46,7 +45,7 @@ export default function GodPanel() {
       try {
         const move = await think({ enabled: true });
         if (isRunning && move) {
-          animateRing(move.x, move.z, move.kind); // Draw the AI's tap!
+          animateRing(move.x, move.z, move.kind); 
         }
       } catch (e) {
         console.error("AI Error:", e);
@@ -64,7 +63,7 @@ export default function GodPanel() {
 
   function strike(cx: number, cz: number) {
     drop({ kind, x: cx, z: cz });
-    animateRing(cx, cz, kind); // Draw your manual tap!
+    animateRing(cx, cz, kind); 
   }
 
   return (
@@ -111,10 +110,23 @@ export default function GodPanel() {
             {Array.from({ length: GRID * GRID }, (_, i) => {
               const cx = i % GRID;
               const cz = Math.floor(i / GRID);
+              
+              // --- NEW: Check if this cell is currently being targeted! ---
+              const activeDrop = rings.find((r) => r.cx === cx && r.cz === cz);
+
               return (
                 <button
                   key={i}
                   className={`gp-cell ${(cx + cz) % 2 === 0 ? "is-dark" : ""}`}
+                  // --- NEW: Dynamically fill the block with color if targeted ---
+                  style={
+                    activeDrop 
+                      ? { 
+                          background: `color-mix(in srgb, ${activeDrop.hue} 50%, #201D2E)`,
+                          boxShadow: `inset 0 0 0 1px ${activeDrop.hue}` 
+                        } 
+                      : undefined
+                  }
                   onClick={() => strike(cx, cz)}
                   aria-label={`Cell ${cx}, ${cz}`}
                 />
@@ -313,14 +325,12 @@ const css = `
 }
 .gp-cell.is-dark { background: #191626; }
 
-/* --- FIX: Only apply sticky hover effects on devices with mice! --- */
 @media (hover: hover) {
   .gp-cell:hover {
     background: color-mix(in srgb, var(--hue) 26%, #201D2E);
     box-shadow: inset 0 0 0 1px var(--hue);
   }
 }
-/* Let phones get a quick flash when tapped instead */
 .gp-cell:active {
   background: color-mix(in srgb, var(--hue) 40%, #201D2E);
 }
