@@ -23,18 +23,27 @@ export default function GodPanel() {
   const round = useQuery(api.round.current);
   const startRound = useMutation(api.round.start);
   
-  // --- THE CLOCK FIX: Force React to tick every half-second ---
+  // --- THE CLOCK DRIFT FIX ---
   const [now, setNow] = useState(Date.now());
+  const [localDeadline, setLocalDeadline] = useState(0);
+
+  // Sync to the server's remaining time using our local clock to ignore timezone/hardware drift
+  useEffect(() => {
+    if (round?.status === "live") {
+      setLocalDeadline(Date.now() + round.remainingMs);
+    }
+  }, [round?.status, round?.remainingMs]);
+
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(timer);
   }, []);
 
-  // Calculate the clock and intensity dynamically on the frontend so it actually updates!
   const isLive = round?.status === "live";
-  const remainingMs = isLive ? Math.max(0, round.endsAt - now) : 0;
+  const remainingMs = isLive ? Math.max(0, localDeadline - now) : 0;
   const remainingSecs = Math.ceil(remainingMs / 1000);
   const intensity = isLive && round.duration ? 1 - (remainingMs / round.duration) : 0;
+  // ---------------------------
   
   const intensityRef = useRef(intensity);
   const [kind, setKind] = useState("boulder");
@@ -57,7 +66,6 @@ export default function GodPanel() {
     setTimeout(() => setRings((r) => r.filter((x) => x.id !== id)), 400);
   }
 
-  // --- ESCALATION AI LOOP ---
   useEffect(() => {
     if (!ai || !isLive) return;
 
@@ -76,9 +84,8 @@ export default function GodPanel() {
 
         if (!isRunning) break;
 
-        // --- THE CRASH FIX: Safe delay calculation ---
         const rawDelay = 2500 - (intensityRef.current * 1800);
-        const delay = Math.max(500, rawDelay || 2500); // NEVER go below 500ms to protect the browser
+        const delay = Math.max(500, rawDelay || 2500); 
         await new Promise((r) => setTimeout(r, delay));
       }
     };
