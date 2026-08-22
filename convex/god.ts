@@ -27,7 +27,7 @@ export const think = action({
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "deepseek-ai/DeepSeek-R1",
+       model: "deepseek-ai/DeepSeek-V3-0324",
         max_tokens: 200,
         temperature: 0.9,
         messages: [
