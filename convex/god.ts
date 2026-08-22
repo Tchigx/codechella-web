@@ -48,7 +48,7 @@ export const think = action({
       return; // No timer here!
     }
 
-    try {
+   try {
       const data = await res.json();
       const raw = data.choices[0].message.content.replace(/```json|```/g, "").trim();
       const move = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
@@ -57,6 +57,7 @@ export const think = action({
         await ctx.runMutation(api.game.drop, {
           kind: move.kind, x: move.x, z: move.z,
         });
+        return move; // <-- THIS IS THE MAGIC LINE WE ADDED!
       }
     } catch (e) {
       console.error("god parse failed", e);

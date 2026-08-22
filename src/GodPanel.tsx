@@ -1,18 +1,13 @@
 import { useState, useEffect, useRef } from "react";
-// 1. Added useAction for the AI
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../convex/_generated/api";
 
-/* ------------------------------------------------------------------
-   Arena constants — must match the Luau script exactly.
------------------------------------------------------------------- */
 const GRID = 8;
 const CELL = 16;
 const ORIGIN_X = -64;
 const ORIGIN_Z = -64;
-const SPAN = GRID * CELL; // 128 studs
+const SPAN = GRID * CELL; 
 
-// 2. Merged your custom hazards into the new aesthetic
 const HAZARDS = [
   { id: "boulder", name: "Boulder", mark: "\u25CF", hue: "#E4562A", line: "Falls from the sky. Crushes." },
   { id: "misc",    name: "Misc",    mark: "\u2731", hue: "#2ce253", line: "Random debris from above." },
@@ -23,39 +18,53 @@ const HAZARDS = [
 export default function GodPanel() {
   const players = useQuery(api.game.players) ?? [];
   const drop = useMutation(api.game.drop);
-  // 3. Hooked up the AI
   const think = useAction(api.god.think);
 
   const [kind, setKind] = useState("boulder");
   const [rings, setRings] = useState<{ id: number; cx: number; cz: number; hue: string }[]>([]);
   const [count, setCount] = useState(0);
-  const [ai, setAi] = useState(false); // AI State
+  const [ai, setAi] = useState(false); 
   const ringId = useRef(0);
 
   const active = HAZARDS.find((h) => h.id === kind)!;
 
-  // 4. The 1.5-second AI Loop
+  // --- NEW: A reusable function to draw a ring, so both YOU and the AI can use it! ---
+  function animateRing(cx: number, cz: number, hazardKind: string) {
+    const hazard = HAZARDS.find((h) => h.id === hazardKind) || HAZARDS[0];
+    setCount((c) => c + 1); // Updates the cast count!
+    const id = ringId.current++;
+    setRings((r) => [...r, { id, cx, cz, hue: hazard.hue }]);
+    setTimeout(() => setRings((r) => r.filter((x) => x.id !== id)), 800);
+  }
+
+  // The AI Loop now waits for a response and draws a ring!
   useEffect(() => {
     if (!ai) return;
 
-    think({ enabled: true });
+    let isRunning = true;
+    const triggerAi = async () => {
+      try {
+        const move = await think({ enabled: true });
+        if (isRunning && move) {
+          animateRing(move.x, move.z, move.kind); // Draw the AI's tap!
+        }
+      } catch (e) {
+        console.error("AI Error:", e);
+      }
+    };
 
-    const timer = setInterval(() => {
-      think({ enabled: true });
-    }, 1500);
+    triggerAi(); 
+    const timer = setInterval(triggerAi, 1500);
 
-    return () => clearInterval(timer);
+    return () => {
+      isRunning = false;
+      clearInterval(timer);
+    };
   }, [ai, think]);
 
-  /* Tap a cell: fire the mutation, and bloom a ring on the same beat as
-     the in-game telegraph so the two screens share a rhythm. */
   function strike(cx: number, cz: number) {
     drop({ kind, x: cx, z: cz });
-    setCount((c) => c + 1);
-
-    const id = ringId.current++;
-    setRings((r) => [...r, { id, cx, cz, hue: active.hue }]);
-    setTimeout(() => setRings((r) => r.filter((x) => x.id !== id)), 800);
+    animateRing(cx, cz, kind); // Draw your manual tap!
   }
 
   return (
@@ -90,7 +99,6 @@ export default function GodPanel() {
         
         <p className="gp-line">{active.line}</p>
 
-        {/* 5. The beautifully styled AI Toggle Button */}
         <button 
           className={`gp-ai-btn ${ai ? "is-active" : ""}`}
           onClick={() => setAi(!ai)}
@@ -205,7 +213,6 @@ const css = `
   color: rgba(237, 231, 217, 0.5);
 }
 
-/* --- hazard rack ------------------------------------------------ */
 .gp-rack {
   display: flex;
   gap: 10px;
@@ -252,7 +259,6 @@ const css = `
   color: rgba(237, 231, 217, 0.4);
 }
 
-/* --- AI Button -------------------------------------------------- */
 .gp-ai-btn {
   width: min(92vw, 480px);
   padding: 14px;
@@ -276,7 +282,6 @@ const css = `
 }
 .gp-ai-btn:hover { border-color: #9932CC; color: rgba(237, 231, 217, 0.8); }
 
-/* --- board ------------------------------------------------------ */
 .gp-board {
   position: relative;
   width: min(92vw, 480px);
@@ -308,16 +313,18 @@ const css = `
 }
 .gp-cell.is-dark { background: #191626; }
 
-.gp-cell:hover {
-  background: color-mix(in srgb, var(--hue) 26%, #201D2E);
-  box-shadow: inset 0 0 0 1px var(--hue);
+/* --- FIX: Only apply sticky hover effects on devices with mice! --- */
+@media (hover: hover) {
+  .gp-cell:hover {
+    background: color-mix(in srgb, var(--hue) 26%, #201D2E);
+    box-shadow: inset 0 0 0 1px var(--hue);
+  }
 }
-.gp-cell:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: -2px;
+/* Let phones get a quick flash when tapped instead */
+.gp-cell:active {
+  background: color-mix(in srgb, var(--hue) 40%, #201D2E);
 }
 
-/* --- signature: the wrath ring --------------------------------- */
 .gp-ring {
   position: absolute;
   width: 12px; height: 12px;
@@ -333,7 +340,6 @@ const css = `
   100% { transform: scale(11); opacity: 0; }
 }
 
-/* --- mortals ---------------------------------------------------- */
 .gp-mortal {
   position: absolute;
   width: 11px; height: 11px;
@@ -351,7 +357,6 @@ const css = `
   50%      { opacity: 0.45; }
 }
 
-/* --- footer ----------------------------------------------------- */
 .gp-foot {
   display: flex;
   gap: 40px;
