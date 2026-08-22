@@ -22,6 +22,7 @@ export const think = action({
     const res = await fetch("https://api.gmi-serving.com/v1/chat/completions", {
       method: "POST",
       headers: {
+        // @ts-ignore
         Authorization: `Bearer ${process.env.GMI_API_KEY}`,
         "Content-Type": "application/json",
       },
@@ -36,7 +37,7 @@ export const think = action({
               "You are a hostile dungeon master in an 8x8 arena (cells 0-7). " +
               "Predict where players are MOVING, not where they are — hazards " +
               "take 0.8s to land. Reply ONLY with JSON: " +
-              '{"kind":"boulder"|"flame"|"strike","x":0-7,"z":0-7,"taunt":"<8 words"}',
+              '{"kind":"boulder"|"misc"|"shards","x":0-7,"z":0-7,"taunt":"<8 words"}',
           },
           { role: "user", content: `Players at: ${JSON.stringify(cells)}` },
         ],
@@ -60,4 +61,3 @@ export const think = action({
     await ctx.scheduler.runAfter(3000, api.god.think, { enabled });
   },
 });
-'{"kind":"boulder"|"misc"|"shards"}'
