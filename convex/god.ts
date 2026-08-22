@@ -44,6 +44,14 @@ export const think = action({
       }),
     });
 
+   // Add this safety check right before the try block!
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error("GMI Cloud API Error:", res.status, errorText);
+      await ctx.scheduler.runAfter(3000, api.god.think, { enabled });
+      return;
+    }
+
     try {
       const data = await res.json();
       const raw = data.choices[0].message.content.replace(/```json|```/g, "").trim();
