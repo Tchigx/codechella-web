@@ -10,7 +10,7 @@ export const think = action({
 
     const players = await ctx.runQuery(api.game.players);
     if (players.length === 0) {
-      await ctx.scheduler.runAfter(3000, api.god.think, { enabled });
+      await ctx.scheduler.runAfter(6000, api.god.think, { enabled });
       return;
     }
 
@@ -27,9 +27,10 @@ export const think = action({
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-       model: "deepseek-ai/DeepSeek-V3-0324",
+        model: "deepseek-ai/DeepSeek-V3-0324",
         max_tokens: 200,
-        temperature: 0.9,
+        // CHANGED: Lowered from 0.9 to 0.4 to make the AI strategic instead of random
+        temperature: 0.4, 
         messages: [
           {
             role: "system",
@@ -44,11 +45,11 @@ export const think = action({
       }),
     });
 
-   // Add this safety check right before the try block!
     if (!res.ok) {
       const errorText = await res.text();
       console.error("GMI Cloud API Error:", res.status, errorText);
-      await ctx.scheduler.runAfter(3000, api.god.think, { enabled });
+      // CHANGED: Synced this timer to 6000 as well
+      await ctx.scheduler.runAfter(6000, api.god.think, { enabled }); 
       return;
     }
 
@@ -66,6 +67,6 @@ export const think = action({
       console.error("god parse failed", e);
     }
 
-    await ctx.scheduler.runAfter(3000, api.god.think, { enabled });
+    await ctx.scheduler.runAfter(6000, api.god.think, { enabled });
   },
 });
