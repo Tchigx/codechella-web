@@ -11,6 +11,7 @@
 import type * as game from "../game.js";
 import type * as god from "../god.js";
 import type * as http from "../http.js";
+import type * as round from "../round.js";
 
 import type {
   ApiFromModules,
@@ -22,6 +23,7 @@ declare const fullApi: ApiFromModules<{
   game: typeof game;
   god: typeof god;
   http: typeof http;
+  round: typeof round;
 }>;
 
 /**
