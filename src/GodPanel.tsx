@@ -2,86 +2,136 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../convex/_generated/api";
 
-/* ------------------------------------------------------------------
-   Arena constants — must match the Luau script exactly.
------------------------------------------------------------------- */
 const GRID = 8;
 const CELL = 16;
 const ORIGIN_X = -64;
 const ORIGIN_Z = -64;
-const SPAN = GRID * CELL; // 128 studs
+const SPAN = GRID * CELL; 
 
-/* These four ids are the contract. They must match:
-     - the `handlers` table in the Roblox server script
-     - the kinds listed in the god.ts system prompt
-   Anything missing from `handlers` is silently ignored in-game. */
 const HAZARDS = [
   { id: "boulder", name: "Boulder", mark: "\u25CF", hue: "#E4562A", line: "Falls from the sky. Crushes." },
-  { id: "misc",    name: "Misc",    mark: "\u2731", hue: "#C8A24A", line: "Random debris from above." },
-  { id: "shards",  name: "Shards",  mark: "\u2726", hue: "#5B8DD6", line: "Lethal glass fragments." },
-  { id: "zombies", name: "Zombies", mark: "\u2620", hue: "#6CC24A", line: "The undead rise to feast." },
+  { id: "misc",    name: "Misc",    mark: "\u2731", hue: "#2ce253", line: "Random debris from above." },
+  { id: "shards",  name: "Shards",  mark: "\u2726", hue: "#5b8dd6", line: "Lethal glass fragments." },
+  { id: "zombies", name: "Zombies", mark: "\u2620", hue: "#6cc24a", line: "The undead rise to feast." },
 ];
 
 export default function GodPanel() {
   const players = useQuery(api.game.players) ?? [];
   const drop = useMutation(api.game.drop);
   const think = useAction(api.god.think);
+  
+  // --- NEW: Round Queries ---
+  const round = useQuery(api.round.current);
+  const startRound = useMutation(api.round.start);
+  
+  // Escalation math
+  const intensity = round?.intensity ?? 0;
+  const intensityRef = useRef(intensity);
 
   const [kind, setKind] = useState("boulder");
   const [rings, setRings] = useState<{ id: number; cx: number; cz: number; hue: string }[]>([]);
   const [count, setCount] = useState(0);
-  const [ai, setAi] = useState(false);
+  const [ai, setAi] = useState(false); 
   const ringId = useRef(0);
 
   const active = HAZARDS.find((h) => h.id === kind)!;
 
+  // Keep ref synced so the loop has the freshest intensity without restarting
+  useEffect(() => {
+    intensityRef.current = intensity;
+  }, [intensity]);
+
   function animateRing(cx: number, cz: number, hazardKind: string) {
     const hazard = HAZARDS.find((h) => h.id === hazardKind) || HAZARDS[0];
-    setCount((c) => c + 1);
+    setCount((c) => c + 1); 
     const id = ringId.current++;
     setRings((r) => [...r, { id, cx, cz, hue: hazard.hue }]);
-    setTimeout(() => setRings((r) => r.filter((x) => x.id !== id)), 800);
+    setTimeout(() => setRings((r) => r.filter((x) => x.id !== id)), 400);
   }
 
-  /* Chained loop, not setInterval: the 1.5s gap starts AFTER each
-     response, so slow inference can never stack requests. */
+  // --- ESCALATION AI LOOP ---
   useEffect(() => {
-    if (!ai) return;
-    let alive = true;
+    if (!ai || round?.status !== "live") return;
 
-    (async function loop() {
-      while (alive) {
+    let isRunning = true;
+
+    const runLoop = async () => {
+      while (isRunning) {
         try {
-          const move = await think({ enabled: true });
-          if (alive && move) animateRing(move.x, move.z, move.kind);
+          const move = await think({ enabled: true, intensity: intensityRef.current });
+          if (isRunning && move) {
+            animateRing(move.x, move.z, move.kind); 
+          }
         } catch (e) {
           console.error("AI Error:", e);
         }
-        await new Promise((r) => setTimeout(r, 1500));
-      }
-    })();
 
-    return () => { alive = false; };
-  }, [ai, think]);
+        if (!isRunning) break;
+
+        // The dynamic delay: 2.5s -> 0.7s as the round progresses
+        const delay = 2500 - (intensityRef.current * 1800);
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    };
+
+    runLoop(); 
+
+    return () => {
+      isRunning = false;
+    };
+  }, [ai, round?.status, think]);
 
   function strike(cx: number, cz: number) {
     drop({ kind, x: cx, z: cz });
-    animateRing(cx, cz, kind);
+    animateRing(cx, cz, kind); 
   }
 
   return (
     <>
       <style>{css}</style>
       <div className="gp-root">
+        
+        {/* OVERLAYS */}
+        {round?.status === "over" && (
+          <div className="gp-overlay">
+            <h2 className="gp-title" style={{ fontSize: '32px' }}>
+              {round.winner === "player" ? "The Mortal Endured" : "Wrath Prevailed"}
+            </h2>
+            <div style={{ display: 'flex', gap: '20px', margin: '20px 0' }}>
+              <p>Player Score: <strong>{round.playerScore}</strong></p>
+              <p>Web Score: <strong>{round.webScore}</strong></p>
+            </div>
+            <button className="gp-ai-btn is-active" onClick={() => startRound()}>Play Again</button>
+          </div>
+        )}
+
         <header className="gp-head">
           <span className="gp-eyebrow">Codechella</span>
           <h1 className="gp-title">Wrath</h1>
           <p className="gp-sub">
-            Eight by eight. {players.length === 0
-              ? "The arena is empty."
-              : `${players.length} mortal${players.length > 1 ? "s" : ""} below.`}
+            {round?.status === "live" 
+              ? `${Math.ceil(round.remainingMs / 1000)} seconds remaining...`
+              : "Awaiting the next trial."}
           </p>
         </header>
+
+        {round?.status !== "live" ? (
+          <button 
+            className="gp-ai-btn is-active"
+            onClick={() => startRound()}
+            style={{ marginBottom: '20px' }}
+          >
+            Start 45-Second Round
+          </button>
+        ) : (
+          <button 
+            className={`gp-ai-btn ${ai ? "is-active" : ""}`}
+            onClick={() => setAi(!ai)}
+            style={{ marginBottom: '20px' }}
+          >
+            {ai ? "🧠 Overlord Awakened" : "Awaken AI"}
+          </button>
+        )}
 
         <div className="gp-rack" role="radiogroup" aria-label="Choose a hazard">
           {HAZARDS.map((h) => (
@@ -98,16 +148,8 @@ export default function GodPanel() {
             </button>
           ))}
         </div>
-
+        
         <p className="gp-line">{active.line}</p>
-
-        <button
-          className={`gp-ai-btn ${ai ? "is-active" : ""}`}
-          onClick={() => setAi(!ai)}
-          aria-pressed={ai}
-        >
-          {ai ? "Overlord awakened" : "Awaken the overlord"}
-        </button>
 
         <div className="gp-board" style={{ ["--hue" as string]: active.hue }}>
           <div className="gp-cells">
@@ -121,15 +163,14 @@ export default function GodPanel() {
                   key={i}
                   className={`gp-cell ${(cx + cz) % 2 === 0 ? "is-dark" : ""}`}
                   style={
-                    activeDrop
-                      ? {
+                    activeDrop 
+                      ? { 
                           background: `color-mix(in srgb, ${activeDrop.hue} 50%, #201D2E)`,
-                          boxShadow: `inset 0 0 0 1px ${activeDrop.hue}`,
-                        }
+                          boxShadow: `inset 0 0 0 1px ${activeDrop.hue}` 
+                        } 
                       : undefined
                   }
                   onClick={() => strike(cx, cz)}
-                  aria-label={`Cell ${cx}, ${cz}`}
                 />
               );
             })}
@@ -197,6 +238,19 @@ const css = `
   flex-direction: column;
   align-items: center;
   gap: 22px;
+  position: relative;
+}
+
+.gp-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(11, 10, 18, 0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  backdrop-filter: blur(8px);
 }
 
 .gp-head { text-align: center; }
@@ -226,21 +280,19 @@ const css = `
   color: rgba(237, 231, 217, 0.5);
 }
 
-/* --- hazard rack ------------------------------------------------ */
 .gp-rack {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   width: min(92vw, 480px);
 }
 
 .gp-sigil {
   flex: 1;
-  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 5px;
-  padding: 12px 4px 10px;
+  padding: 12px 6px 10px;
   cursor: pointer;
   background: var(--stone);
   color: rgba(237, 231, 217, 0.42);
@@ -250,7 +302,6 @@ const css = `
 }
 .gp-sigil:hover { color: rgba(237, 231, 217, 0.75); }
 .gp-sigil:active { transform: translateY(1px); }
-.gp-sigil:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 
 .gp-sigil.is-armed {
   color: var(--hue);
@@ -263,8 +314,8 @@ const css = `
 
 .gp-name {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 9px;
-  letter-spacing: 0.16em;
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
 }
 
@@ -275,38 +326,29 @@ const css = `
   color: rgba(237, 231, 217, 0.4);
 }
 
-/* --- overlord toggle -------------------------------------------- */
 .gp-ai-btn {
   width: min(92vw, 480px);
   padding: 14px;
   cursor: pointer;
   background: var(--stone);
-  color: rgba(237, 231, 217, 0.45);
-  border: 1px solid rgba(200, 162, 74, 0.2);
+  color: rgba(237, 231, 217, 0.5);
+  border: 1px solid rgba(153, 50, 204, 0.3);
   border-radius: 2px;
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  letter-spacing: 0.22em;
+  font-size: 13px;
+  letter-spacing: 0.15em;
   text-transform: uppercase;
-  transition: color .2s, border-color .2s, background .2s, box-shadow .2s;
+  transition: all 0.2s;
 }
-.gp-ai-btn:hover { color: rgba(237, 231, 217, 0.8); border-color: rgba(200, 162, 74, 0.45); }
-.gp-ai-btn:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
-
 .gp-ai-btn.is-active {
-  background: color-mix(in srgb, var(--brass) 12%, var(--stone));
-  color: var(--brass);
-  border-color: var(--brass);
-  box-shadow: 0 0 24px -8px var(--brass), inset 0 0 18px -10px var(--brass);
-  animation: vigil 2.4s ease-in-out infinite;
+  background: rgba(153, 50, 204, 0.15);
+  color: #fff;
+  border-color: #9932CC;
+  box-shadow: 0 0 20px -5px #9932CC, inset 0 0 12px -6px #9932CC;
+  text-shadow: 0 0 8px rgba(153, 50, 204, 0.8);
 }
+.gp-ai-btn:hover { border-color: #9932CC; color: rgba(237, 231, 217, 0.8); }
 
-@keyframes vigil {
-  0%, 100% { box-shadow: 0 0 24px -8px var(--brass), inset 0 0 18px -10px var(--brass); }
-  50%      { box-shadow: 0 0 34px -4px var(--brass), inset 0 0 22px -8px var(--brass); }
-}
-
-/* --- board ------------------------------------------------------ */
 .gp-board {
   position: relative;
   width: min(92vw, 480px);
@@ -344,10 +386,10 @@ const css = `
     box-shadow: inset 0 0 0 1px var(--hue);
   }
 }
-.gp-cell:active { background: color-mix(in srgb, var(--hue) 40%, #201D2E); }
-.gp-cell:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+.gp-cell:active {
+  background: color-mix(in srgb, var(--hue) 40%, #201D2E);
+}
 
-/* --- signature: the wrath ring --------------------------------- */
 .gp-ring {
   position: absolute;
   width: 12px; height: 12px;
@@ -363,7 +405,6 @@ const css = `
   100% { transform: scale(11); opacity: 0; }
 }
 
-/* --- mortals ---------------------------------------------------- */
 .gp-mortal {
   position: absolute;
   width: 11px; height: 11px;
@@ -377,11 +418,10 @@ const css = `
 }
 
 @keyframes breathe {
-  0%, 100% { opacity: 1;    }
+  0%, 100% { opacity: 1;   }
   50%      { opacity: 0.45; }
 }
 
-/* --- footer ----------------------------------------------------- */
 .gp-foot {
   display: flex;
   gap: 40px;
@@ -391,13 +431,7 @@ const css = `
   border-top: 1px solid rgba(200, 162, 74, 0.14);
 }
 
-.gp-stat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding-top: 12px;
-}
+.gp-stat { display: flex; flex-direction: column; align-items: center; gap: 2px; padding-top: 12px; }
 
 .gp-num {
   font-family: 'IBM Plex Mono', monospace;
@@ -415,7 +449,7 @@ const css = `
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .gp-ring, .gp-mortal, .gp-ai-btn.is-active { animation: none; }
+  .gp-ring, .gp-mortal { animation: none; }
   .gp-mortal { transition: none; }
 }
 `;
