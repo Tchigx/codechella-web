@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 // 1. Added useAction here
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../convex/_generated/api";
@@ -8,8 +8,7 @@ const HAZARDS = [
   { id: "boulder", label: "Boulder", color: "#a5473c" },
   { id: "misc",   label: "Misc",   color: "#2ce253" },
   { id: "shards", label: "Shards", color: "#5b8dd6" },
-  { id: "zombies", label: "zombies", color: "#123107" },
-
+  { id: "zombies", label: "Zombies", color: "#123107" },
 ];
 
 export default function GodPanel() {
@@ -24,6 +23,23 @@ export default function GodPanel() {
   
   // 3. Tracks whether the AI is currently attacking
   const [ai, setAi] = useState(false);
+
+  // --- THIS IS THE NEW MAGIC TIMER ---
+  useEffect(() => {
+    if (!ai) return; // If button is off, do nothing
+
+    // Drop one immediately when turned on
+    think({ enabled: true });
+
+    // Start the 3-second loop
+    const timer = setInterval(() => {
+      think({ enabled: true });
+    }, 3000);
+
+    // Kills the timer instantly when you toggle the button off
+    return () => clearInterval(timer);
+  }, [ai, think]);
+  // ------------------------------------
 
   const occupied = new Set(
     players
@@ -56,11 +72,8 @@ export default function GodPanel() {
 
       {/* 4. The AI Toggle Button */}
       <button 
-        onClick={() => { 
-          const next = !ai; 
-          setAi(next); 
-          if (next) think({ enabled: next }); 
-        }}
+        // --- SIMPLIFIED THIS ONCLICK ---
+        onClick={() => setAi(!ai)}
         style={{
           padding: "16px", width: "100%", cursor: "pointer",
           background: ai ? "#9932CC" : "#222",
