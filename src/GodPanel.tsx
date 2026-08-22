@@ -20,14 +20,23 @@ export default function GodPanel() {
   const drop = useMutation(api.game.drop);
   const think = useAction(api.god.think);
   
-  // --- NEW: Round Queries ---
   const round = useQuery(api.round.current);
   const startRound = useMutation(api.round.start);
   
-  // Escalation math
-  const intensity = round?.intensity ?? 0;
-  const intensityRef = useRef(intensity);
+  // --- THE CLOCK FIX: Force React to tick every half-second ---
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(timer);
+  }, []);
 
+  // Calculate the clock and intensity dynamically on the frontend so it actually updates!
+  const isLive = round?.status === "live";
+  const remainingMs = isLive ? Math.max(0, round.endsAt - now) : 0;
+  const remainingSecs = Math.ceil(remainingMs / 1000);
+  const intensity = isLive && round.duration ? 1 - (remainingMs / round.duration) : 0;
+  
+  const intensityRef = useRef(intensity);
   const [kind, setKind] = useState("boulder");
   const [rings, setRings] = useState<{ id: number; cx: number; cz: number; hue: string }[]>([]);
   const [count, setCount] = useState(0);
@@ -36,7 +45,6 @@ export default function GodPanel() {
 
   const active = HAZARDS.find((h) => h.id === kind)!;
 
-  // Keep ref synced so the loop has the freshest intensity without restarting
   useEffect(() => {
     intensityRef.current = intensity;
   }, [intensity]);
@@ -51,7 +59,7 @@ export default function GodPanel() {
 
   // --- ESCALATION AI LOOP ---
   useEffect(() => {
-    if (!ai || round?.status !== "live") return;
+    if (!ai || !isLive) return;
 
     let isRunning = true;
 
@@ -68,8 +76,9 @@ export default function GodPanel() {
 
         if (!isRunning) break;
 
-        // The dynamic delay: 2.5s -> 0.7s as the round progresses
-        const delay = 2500 - (intensityRef.current * 1800);
+        // --- THE CRASH FIX: Safe delay calculation ---
+        const rawDelay = 2500 - (intensityRef.current * 1800);
+        const delay = Math.max(500, rawDelay || 2500); // NEVER go below 500ms to protect the browser
         await new Promise((r) => setTimeout(r, delay));
       }
     };
@@ -79,7 +88,7 @@ export default function GodPanel() {
     return () => {
       isRunning = false;
     };
-  }, [ai, round?.status, think]);
+  }, [ai, isLive, think]);
 
   function strike(cx: number, cz: number) {
     drop({ kind, x: cx, z: cz });
@@ -91,7 +100,6 @@ export default function GodPanel() {
       <style>{css}</style>
       <div className="gp-root">
         
-        {/* OVERLAYS */}
         {round?.status === "over" && (
           <div className="gp-overlay">
             <h2 className="gp-title" style={{ fontSize: '32px' }}>
@@ -101,7 +109,12 @@ export default function GodPanel() {
               <p>Player Score: <strong>{round.playerScore}</strong></p>
               <p>Web Score: <strong>{round.webScore}</strong></p>
             </div>
-            <button className="gp-ai-btn is-active" onClick={() => startRound()}>Play Again</button>
+            <button 
+              className="gp-ai-btn is-active" 
+              onClick={() => { setAi(false); startRound(); }}
+            >
+              Play Again
+            </button>
           </div>
         )}
 
@@ -109,13 +122,13 @@ export default function GodPanel() {
           <span className="gp-eyebrow">Codechella</span>
           <h1 className="gp-title">Wrath</h1>
           <p className="gp-sub">
-            {round?.status === "live" 
-              ? `${Math.ceil(round.remainingMs / 1000)} seconds remaining...`
+            {isLive 
+              ? `${remainingSecs} seconds remaining...`
               : "Awaiting the next trial."}
           </p>
         </header>
 
-        {round?.status !== "live" ? (
+        {!isLive ? (
           <button 
             className="gp-ai-btn is-active"
             onClick={() => startRound()}
