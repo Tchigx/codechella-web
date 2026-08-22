@@ -28,13 +28,14 @@ export default function GodPanel() {
 
   const active = HAZARDS.find((h) => h.id === kind)!;
 
-  function animateRing(cx: number, cz: number, hazardKind: string) {
+ function animateRing(cx: number, cz: number, hazardKind: string) {
     const hazard = HAZARDS.find((h) => h.id === hazardKind) || HAZARDS[0];
     setCount((c) => c + 1); 
     const id = ringId.current++;
     setRings((r) => [...r, { id, cx, cz, hue: hazard.hue }]);
-    // Removes the ring (and the block highlight) after exactly 800ms
-    setTimeout(() => setRings((r) => r.filter((x) => x.id !== id)), 800);
+    
+    // CHANGED: Lowered from 800 to 400 for a much snappier fade out!
+    setTimeout(() => setRings((r) => r.filter((x) => x.id !== id)), 400);
   }
 
   useEffect(() => {
