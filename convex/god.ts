@@ -26,7 +26,7 @@ export const think = action({
       body: JSON.stringify({
         model: "deepseek-ai/DeepSeek-V3-0324",
         max_tokens: 200,
-        temperature: 0.6, // Bumped up so it doesn't just spam boulders
+        temperature: 0.85, // Bumped up so it doesn't just spam boulders
         messages: [
           {
             role: "system",
